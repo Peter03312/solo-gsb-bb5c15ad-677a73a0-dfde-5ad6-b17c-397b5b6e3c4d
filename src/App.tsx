@@ -30,6 +30,7 @@ import {
   type PaceOptions,
 } from './lib/pace';
 import { buildTrackCsv, parseOcclusions, planTracks } from './lib/occlude';
+import { buildTermsCues, parseTerms } from './lib/terms';
 import { SAMPLE_A, SAMPLE_B } from './lib/samples';
 import { parseSrt, serializeSrt, type Cue } from './lib/srt';
 import { applyScrollChains, findScrollChains, type ScrollOptions } from './lib/scroll';
@@ -52,6 +53,7 @@ import { PacePanel } from './components/PacePanel';
 import { RecalibrateMigrateDialog } from './components/RecalibrateMigrateDialog';
 import { SnapPanel } from './components/SnapPanel';
 import { StatsBar } from './components/StatsBar';
+import { TermsPanel } from './components/TermsPanel';
 import { Toolbar, type Filter } from './components/Toolbar';
 import { WrapPanel } from './components/WrapPanel';
 
@@ -111,7 +113,7 @@ export default function App() {
 
   // 智能断行：视图切换、参数与逐条应用状态（key 为 groupIndex）
   const [view, setView] = useState<
-    'groups' | 'dedupe' | 'wrap' | 'pace' | 'snap' | 'edit' | 'occlude'
+    'groups' | 'dedupe' | 'wrap' | 'pace' | 'snap' | 'edit' | 'occlude' | 'terms'
   >('groups');
   const [wrapOpts, setWrapOpts] = useState<WrapOptions>({
     maxWidth: 42,
@@ -144,6 +146,10 @@ export default function App() {
   // 字幕遮挡避让（独立模块，只读 finalCues）：遮挡区间列表文本
   // （每行 起点ms 终点ms 上/下），输入或上游结果变化时立即重算轨道分配
   const [occText, setOccText] = useState('');
+
+  // 术语统一（独立模块，只读 finalCues）：术语表文本（逐行 Tab 分隔原词与替换词），
+  // 输入或上游结果变化时通过 useMemo 立即重算规范化副本，不写回合并结果
+  const [termText, setTermText] = useState('');
 
   // 重新校准并迁移审校决定：从工作区进入校准页时保留旧 groups/states；
   // 新对齐算出后先在弹窗中预览迁移方案，确认后才一次提交，取消则旧工作区原封不动。
@@ -692,6 +698,46 @@ export default function App() {
                 : '';
   const canDownloadOcc = occReason === '';
 
+  // 术语统一：解析术语表 → 在最终合并结果上逐条生成规范化副本。输入或上游
+  // finalCues 变化立即重算；仅读取 finalCues，绝不修改合并结果（时间、条数不变）。
+  const termParse = useMemo(() => parseTerms(termText), [termText]);
+  const termsNormalized = useMemo(
+    () => buildTermsCues(finalCues, termParse.rules),
+    [finalCues, termParse],
+  );
+  const termsCues = useMemo(
+    () =>
+      termsNormalized.map((n, i) => ({
+        start: finalCues[i].start,
+        end: finalCues[i].end,
+        text: n.text,
+      })),
+    [termsNormalized, finalCues],
+  );
+  const termsSrt = useMemo(() => serializeSrt(termsCues), [termsCues]);
+  const termsPreview = useMemo(() => {
+    const full = termsSrt;
+    return full.length > 20000
+      ? `${full.slice(0, 20000)}\n…（共 ${termsCues.length} 条，预览已截断）`
+      : full;
+  }, [termsSrt, termsCues.length]);
+  // 下载门槛：术语表无格式错误且至少一条规则、上游可导出
+  const termsReason =
+    !groups
+      ? '尚无上游结果'
+      : unresolved > 0
+        ? `上游还有 ${unresolved} 个未解决冲突`
+        : issues.length > 0
+          ? `上游存在 ${issues.length} 个校验错误`
+          : finalCues.length === 0
+            ? '上游结果为空'
+            : termParse.invalid.length > 0
+              ? `术语表第 ${termParse.invalid.map((b) => b.line).join('、')} 行格式错误`
+              : termParse.rules.length === 0
+                ? '请先填写术语表'
+                : '';
+  const canDownloadTerms = termsReason === '';
+
   const preview = useMemo(() => {
     if (!groups) return '';
     const full = serializeSrt(finalCues);
@@ -877,6 +923,17 @@ export default function App() {
                     字幕遮挡避让
                     <span className="tab-count">{occPlan.ok ? occPlan.topCount : '✗'}</span>
                   </button>
+                  <button
+                    className={`tab ${view === 'terms' ? 'active' : ''}`}
+                    onClick={() => setView('terms')}
+                  >
+                    术语统一
+                    <span className="tab-count">
+                      {termParse.invalid.length > 0
+                        ? '✗'
+                        : termsNormalized.reduce((n, x) => n + x.hits.length, 0)}
+                    </span>
+                  </button>
                 </div>
                 {view === 'groups' ? (
                   <>
@@ -980,7 +1037,7 @@ export default function App() {
                     downloadReason={editedReason}
                     onDownload={() => download('edited.srt', '\uFEFF' + editedSrt)}
                   />
-                ) : (
+                ) : view === 'occlude' ? (
                   <OccludePanel
                     sourceCount={finalCues.length}
                     sourceReady={canExport}
@@ -992,6 +1049,22 @@ export default function App() {
                     canDownload={canDownloadOcc}
                     downloadReason={occReason}
                     onDownload={() => download('tracks.csv', '\uFEFF' + occCsv)}
+                  />
+                ) : (
+                  <></>
+                )}
+                {view === 'terms' && (
+                  <TermsPanel
+                    sourceCount={finalCues.length}
+                    sourceReady={canExport}
+                    termText={termText}
+                    onTermText={setTermText}
+                    parsed={termParse}
+                    normalized={termsNormalized}
+                    preview={termsPreview}
+                    canDownload={canDownloadTerms}
+                    downloadReason={termsReason}
+                    onDownload={() => download('terms.srt', '\uFEFF' + termsSrt)}
                   />
                 )}
               </main>
