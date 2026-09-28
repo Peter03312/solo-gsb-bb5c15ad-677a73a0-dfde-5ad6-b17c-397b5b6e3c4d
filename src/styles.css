@@ -1544,6 +1544,65 @@ body {
   color: var(--muted);
 }
 
+/* ---------- 术语统一 ---------- */
+.terms-word {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terms-word.to {
+  background: rgba(52, 211, 153, 0.14);
+  color: #2fbf8e;
+}
+
+.terms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.terms-entry {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+}
+
+.terms-entry.hit {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.terms-entry .we-cols pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.terms-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.terms-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 1100px) {
   .layout {
